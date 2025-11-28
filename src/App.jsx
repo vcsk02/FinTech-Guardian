@@ -6,7 +6,7 @@ import {
   CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
 import { 
-  Activity, Database, Server, Play, Square, Wifi, Lock, ShieldAlert, Zap, Globe 
+  Activity, Database, Server, Play, Square, Wifi, Lock, ShieldAlert, Zap, Globe, Settings, BrainCircuit
 } from 'lucide-react';
 
 // --- CUSTOM MODULE IMPORTS ---
@@ -22,6 +22,12 @@ export default function App() {
   const [transactions, setTransactions] = useState([]);
   const [stats, setStats] = useState({ total: 0, fraud: 0, blockedAmount: 0 });
 
+  // --- AI SETTINGS STATE ---
+  const [showSettings, setShowSettings] = useState(false);
+  // Default to .env key if available, otherwise empty
+  const [geminiKey, setGeminiKey] = useState(import.meta.env.VITE_GEMINI_API_KEY || '');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
   // --- FORM STATE ---
   const [formData, setFormData] = useState({
     amount: '',
@@ -36,7 +42,7 @@ export default function App() {
     return onAuthStateChanged(auth, setUser);
   }, []);
 
-  // 2. Data Streaming (Background Generator)
+  // 2. Data Streaming (Background Generator - Always uses Heuristic for speed)
   useEffect(() => {
     let interval;
     if (isStreaming && user) {
@@ -53,6 +59,7 @@ export default function App() {
           timestamp: new Date().toISOString()
         };
 
+        // Stream always uses fast heuristic engine (Edge AI)
         const analyzedTx = mlEngine.analyze(rawTx);
 
         try {
@@ -69,22 +76,32 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isStreaming, user]);
 
-  // --- MANUAL SUBMIT HANDLER ---
+  // --- MANUAL SUBMIT HANDLER (Uses Gemini if Key is present) ---
   const handleManualSubmit = async (e) => {
     e.preventDefault();
     if (!formData.amount) return;
+
+    setIsAnalyzing(true);
 
     const rawTx = {
       amount: parseFloat(formData.amount),
       merchant: formData.merchant,
       location: formData.location,
       isForeignIp: formData.isForeignIp,
-      velocity: 0.1, // Manual entry assumed low velocity
+      velocity: 0.1, 
       timestamp: new Date().toISOString()
     };
 
-    // Run the same AI logic
-    const analyzedTx = mlEngine.analyze(rawTx);
+    let analyzedTx;
+
+    // DECISION: Use Gemini if key exists, else use Heuristic
+    if (geminiKey) {
+      console.log("Analyzing with Gemini...");
+      analyzedTx = await mlEngine.analyzeWithGemini(rawTx, geminiKey);
+    } else {
+      console.log("Analyzing with Heuristic...");
+      analyzedTx = mlEngine.analyze(rawTx);
+    }
 
     // Save to Firestore
     try {
@@ -92,10 +109,11 @@ export default function App() {
         ...analyzedTx,
         timestamp: serverTimestamp()
       });
-      // Reset amount for convenience
       setFormData(prev => ({ ...prev, amount: '' }));
     } catch (e) {
       console.error("Error submitting manual tx:", e);
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -151,6 +169,37 @@ export default function App() {
       <Navbar isStreaming={isStreaming} setIsStreaming={setIsStreaming} />
 
       <main className="p-6 max-w-7xl mx-auto space-y-6">
+        {/* SETTINGS TOGGLE */}
+        <div className="flex justify-end">
+          <button 
+            onClick={() => setShowSettings(!showSettings)}
+            className="text-slate-400 hover:text-white flex items-center gap-2 text-sm transition-colors"
+          >
+            <Settings size={16} />
+            {showSettings ? "Hide Settings" : "Configure AI Model"}
+          </button>
+        </div>
+
+        {/* AI CONFIGURATION PANEL */}
+        {showSettings && (
+          <div className="bg-slate-800 border border-indigo-500/30 p-4 rounded-xl shadow-lg animate-fade-in">
+            <h3 className="text-white font-bold flex items-center gap-2 mb-2">
+              <BrainCircuit className="text-indigo-400" size={20} />
+              Gemini API Integration
+            </h3>
+            <p className="text-sm text-slate-400 mb-3">
+              Enter your Google Gemini API Key to enable <b>GenAI analysis</b> for manual simulations. 
+            </p>
+            <input 
+              type="password" 
+              value={geminiKey}
+              onChange={(e) => setGeminiKey(e.target.value)}
+              placeholder="Paste your AIza... Gemini Key here"
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:border-indigo-500 outline-none"
+            />
+          </div>
+        )}
+
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <StatCard 
@@ -173,8 +222,16 @@ export default function App() {
           />
         </div>
 
-        {/* --- NEW: TRANSACTION SIMULATOR --- */}
-        <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 shadow-lg">
+        {/* TRANSACTION SIMULATOR */}
+        <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 shadow-lg relative overflow-hidden">
+          {/* AI Badge */}
+          {geminiKey && (
+            <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[10px] px-2 py-1 rounded-bl-lg font-bold flex items-center gap-1">
+              <BrainCircuit size={10} />
+              GEMINI ACTIVE
+            </div>
+          )}
+
           <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
             <Zap className="w-5 h-5 text-yellow-400" />
             Transaction Simulator
@@ -220,10 +277,24 @@ export default function App() {
             </div>
             <button 
               type="submit"
-              className="w-full md:w-auto px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg shadow-lg shadow-indigo-500/20 transition-all flex items-center justify-center gap-2"
+              disabled={isAnalyzing}
+              className={`w-full md:w-auto px-6 py-2 font-bold rounded-lg shadow-lg transition-all flex items-center justify-center gap-2 ${
+                isAnalyzing 
+                  ? 'bg-indigo-800 text-indigo-200 cursor-wait'
+                  : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'
+              }`}
             >
-              <Zap size={18} />
-              Simulate
+              {isAnalyzing ? (
+                <>
+                  <BrainCircuit size={18} className="animate-pulse" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Zap size={18} />
+                  Simulate
+                </>
+              )}
             </button>
           </form>
         </div>

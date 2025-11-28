@@ -1,99 +1,116 @@
-// This simulates a trained Isolation Forest model running in the browser.
-// It moves the "Intelligence" to the Edge (Client-side) to reduce latency
-// and server costs—a key "Cloud-Native" optimization pattern.
-
 export class FraudInferenceEngine {
   constructor() {
-    this.history = []; // Keep a short history for moving average
+    this.history = []; 
     this.maxHistory = 50;
   }
 
   /**
-   * Calculates the Z-Score (Standard Score) to detect statistical outliers.
-   * Z = (Value - Mean) / Standard Deviation
-   */
-  calculateZScore(value) {
-    if (this.history.length < 5) return 0; // Need enough data points to be statistically significant
-
-    // 1. Calculate Mean
-    const mean = this.history.reduce((a, b) => a + b, 0) / this.history.length;
-    
-    // 2. Calculate Variance
-    const variance = this.history
-      .map(x => Math.pow(x - mean, 2))
-      .reduce((a, b) => a + b, 0) / this.history.length;
-      
-    // 3. Calculate Standard Deviation
-    const stdDev = Math.sqrt(variance);
-
-    if (stdDev === 0) return 0; // Prevent division by zero
-    
-    return (value - mean) / stdDev;
-  }
-
-  /**
-   * Main inference method.
-   * Takes a raw transaction and returns an enriched transaction with fraud scores.
-   * @param {Object} transaction - The raw transaction object
+   * EXISTING: Heuristic/Math-based analysis (Fast, for the stream)
    */
   analyze(transaction) {
-    // 1. Feature Engineering (Extracting relevant data)
     const amount = transaction.amount;
     
-    // 2. Statistical Anomaly Detection (Z-Score)
-    const zScore = this.calculateZScore(amount);
-    
-    // Update history (rolling window)
-    this.history.push(amount);
-    if (this.history.length > this.maxHistory) {
-        this.history.shift();
+    // Z-Score Math
+    let mean = 0, stdDev = 1;
+    if (this.history.length > 5) {
+      mean = this.history.reduce((a, b) => a + b, 0) / this.history.length;
+      const variance = this.history.map(x => Math.pow(x - mean, 2)).reduce((a, b) => a + b, 0) / this.history.length;
+      stdDev = Math.sqrt(variance) || 1;
     }
+    const zScore = (amount - mean) / stdDev;
+    
+    // Update history
+    this.history.push(amount);
+    if (this.history.length > this.maxHistory) this.history.shift();
 
-    // 3. Rule-Based Filters (Heuristics)
-    // These simulate "Business Rules" that often accompany ML models in production
+    // Heuristic Rules
     let riskScore = 0;
     let reasons = [];
 
-    // Rule A: Statistical Outlier (Z-Score > 2.5 means 99% probability of anomaly)
     if (Math.abs(zScore) > 2.5) {
       riskScore += 40;
-      reasons.push("Statistical Outlier (High Amount)");
+      reasons.push("Statistical Outlier");
     }
-
-    // Rule B: Velocity Check (Simulated high frequency)
-    // In a real app, 'velocity' would be calculated by querying the DB for recent txns from this user
     if (transaction.velocity > 0.8) { 
       riskScore += 30;
-      reasons.push("High Velocity Burst");
+      reasons.push("High Velocity");
     }
-
-    // Rule C: Location/IP Risk (Simulated)
     if (transaction.isForeignIp) {
       riskScore += 25;
-      reasons.push("Foreign IP Block");
+      reasons.push("Foreign IP");
     }
-
-    // Rule D: Amount Threshold (Simple heuristic)
     if (amount > 4500) {
         riskScore += 10;
-        reasons.push("Exceeds High Value Limit");
+        reasons.push("High Value");
     }
 
-    // Final Classification
-    // We cap the score at 100
     const finalRiskScore = Math.min(riskScore, 100);
-    const isFraud = finalRiskScore > 50;
     
     return {
       ...transaction,
       riskScore: finalRiskScore,
-      isFraud,
+      isFraud: finalRiskScore > 50,
       reasons,
+      analysisType: 'Heuristic (Edge)',
       analyzedAt: new Date().toISOString()
     };
   }
+
+  /**
+   * NEW: Gemini AI Analysis (Accurate, for Manual Review)
+   */
+  async analyzeWithGemini(transaction, apiKey) {
+    const prompt = `
+      Act as a financial security expert. Analyze this transaction for fraud.
+      
+      Transaction Details:
+      - Amount: $${transaction.amount}
+      - Merchant: ${transaction.merchant}
+      - Location: ${transaction.location}
+      - Foreign IP: ${transaction.isForeignIp}
+      - Velocity Score: ${transaction.velocity}
+      
+      Context: Typical user spends $20-$200 in New York/US.
+      
+      Return valid JSON only:
+      {
+        "riskScore": (integer 0-100),
+        "isFraud": (boolean),
+        "reasons": (array of short strings explaining why)
+      }
+    `;
+
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        })
+      });
+
+      const data = await response.json();
+      const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      // Clean up markdown code blocks if Gemini adds them
+      const cleanJson = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+      const result = JSON.parse(cleanJson);
+
+      return {
+        ...transaction,
+        riskScore: result.riskScore,
+        isFraud: result.isFraud,
+        reasons: result.reasons,
+        analysisType: 'Gemini AI (Cloud)',
+        analyzedAt: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error("Gemini API Error:", error);
+      // Fallback to heuristic if AI fails
+      return this.analyze(transaction);
+    }
+  }
 }
 
-// Export a singleton instance so the history persists across function calls
-// This ensures that previous transactions influence the "Average" calculation for future ones
 export const mlEngine = new FraudInferenceEngine();

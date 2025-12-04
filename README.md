@@ -6,7 +6,9 @@ FinTech Guardian is an enterprise-grade analytics dashboard designed to detect, 
 
 Doumentation Link: https://docs.google.com/document/d/1PJdG-y0tElwgPi_fXf0FHeIw3Xh580kQoXkyE9Iihl8/edit?usp=sharing
 
+Presentation Slides: https://docs.google.com/presentation/d/12jUiSoGnesO-Bcf77u1AH5IH7CwB5_yDAYqUohVkGnU/edit?usp=sharing
 
+Project Demo: 
 
 🚀 Features
 

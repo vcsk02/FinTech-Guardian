@@ -4,7 +4,9 @@ A Cloud-Native Real-Time Fraud Detection Platform.
 
 FinTech Guardian is an enterprise-grade analytics dashboard designed to detect, analyze, and visualize financial fraud in real-time. It utilizes a Hybrid AI Architecture, combining low-latency edge heuristics with the cognitive reasoning of Google Gemini 2.5 to identify anomalies in high-velocity transaction streams.
 
-(Replace this link with a screenshot of your actual dashboard)
+Doumentation Link: https://docs.google.com/document/d/1PJdG-y0tElwgPi_fXf0FHeIw3Xh580kQoXkyE9Iihl8/edit?usp=sharing
+
+
 
 🚀 Features
 

@@ -8,7 +8,7 @@ Doumentation Link: https://docs.google.com/document/d/1PJdG-y0tElwgPi_fXf0FHeIw3
 
 Presentation Slides: https://docs.google.com/presentation/d/12jUiSoGnesO-Bcf77u1AH5IH7CwB5_yDAYqUohVkGnU/edit?usp=sharing
 
-Project Demo: 
+Project Demo: https://drive.google.com/file/d/1PPM5w14KOgV7rFJJTx2ipAwOetnc0-wx/view?usp=sharing
 
 🚀 Features
 
